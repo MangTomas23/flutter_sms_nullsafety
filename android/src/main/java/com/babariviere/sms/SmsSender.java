@@ -10,6 +10,7 @@ import android.os.Build;
 import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.util.Log;
+import java.util.ArrayList;
 
 import com.babariviere.sms.permisions.Permissions;
 
@@ -32,7 +33,8 @@ import static io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultLi
 @TargetApi(Build.VERSION_CODES.DONUT)
 class SmsSenderMethodHandler implements RequestPermissionsResultListener {
     private static final SmsManager sms = SmsManager.getDefault();
-    private final String[] permissionsList = new String[]{Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE};
+    private final String[] permissionsList = new String[] { Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_PHONE_STATE };
     private MethodChannel.Result result;
     private String address;
     private String body;
@@ -40,7 +42,8 @@ class SmsSenderMethodHandler implements RequestPermissionsResultListener {
     private Integer subId;
     private final Registrar registrar;
 
-    SmsSenderMethodHandler(Registrar registrar, MethodChannel.Result result, String address, String body, int sentId, Integer subId) {
+    SmsSenderMethodHandler(Registrar registrar, MethodChannel.Result result, String address, String body, int sentId,
+            Integer subId) {
         this.registrar = registrar;
         this.result = result;
         this.address = address;
@@ -79,21 +82,13 @@ class SmsSenderMethodHandler implements RequestPermissionsResultListener {
     private void sendSmsMessage() {
         Intent sentIntent = new Intent("SMS_SENT");
         sentIntent.putExtra("sentId", sentId);
-        PendingIntent sentPendingIntent = PendingIntent.getBroadcast(
-                registrar.context(),
-                0,
-                sentIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-        );
+        PendingIntent sentPendingIntent = PendingIntent.getBroadcast(registrar.context(), 0, sentIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
 
         Intent deliveredIntent = new Intent("SMS_DELIVERED");
         deliveredIntent.putExtra("sentId", sentId);
-        PendingIntent deliveredPendingIntent = PendingIntent.getBroadcast(
-                registrar.context(),
-                UUID.randomUUID().hashCode(),
-                deliveredIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-        );
+        PendingIntent deliveredPendingIntent = PendingIntent.getBroadcast(registrar.context(),
+                UUID.randomUUID().hashCode(), deliveredIntent, PendingIntent.FLAG_UPDATE_CURRENT);
         SmsManager sms;
         if (this.subId == null) {
             sms = SmsManager.getDefault();
@@ -105,8 +100,43 @@ class SmsSenderMethodHandler implements RequestPermissionsResultListener {
                 return;
             }
         }
-        sms.sendTextMessage(address, null, body, sentPendingIntent, deliveredPendingIntent);
+
+        if (body.length() > 160) {
+            ArrayList<String> parts = sms.divideMessage(body);
+
+            ArrayList<PendingIntent> sentPendingIntents = new ArrayList<PendingIntent>();
+            ArrayList<PendingIntent> deliveredPendingIntents = new ArrayList<PendingIntent>();
+
+            for (int i = 0; i < parts.size(); i++) {
+                sentPendingIntents.add(getSentPendingIntent());
+                deliveredPendingIntents.add(getDeliveredPendingIntent());
+            }
+
+            sms.sendMultipartTextMessage(address, null, parts, sentPendingIntents, deliveredPendingIntents);
+        } else {
+            sms.sendTextMessage(address, null, body, sentPendingIntent, deliveredPendingIntent);
+        }
+
         result.success(null);
+    }
+
+    private PendingIntent getSentPendingIntent() {
+        Intent sentIntent = new Intent("SMS_SENT");
+        sentIntent.putExtra("sentId", sentId);
+
+        PendingIntent sentPendingIntent = PendingIntent.getBroadcast(registrar.context(), 0, sentIntent,
+                PendingIntent.FLAG_ONE_SHOT);
+
+        return sentPendingIntent;
+    }
+
+    private PendingIntent getDeliveredPendingIntent() {
+        Intent deliveredIntent = new Intent("SMS_DELIVERED");
+        deliveredIntent.putExtra("sentId", sentId);
+        PendingIntent deliveredPendingIntent = PendingIntent.getBroadcast(registrar.context(), 23, deliveredIntent,
+                PendingIntent.FLAG_ONE_SHOT);
+
+        return deliveredPendingIntent;
     }
 }
 
@@ -132,7 +162,8 @@ class SmsSender implements MethodCallHandler {
             } else if (body == null) {
                 result.error("#02", "missing argument 'body'", null);
             } else {
-                SmsSenderMethodHandler handler = new SmsSenderMethodHandler(registrar, result, address, body, sentId, subId);
+                SmsSenderMethodHandler handler = new SmsSenderMethodHandler(registrar, result, address, body, sentId,
+                        subId);
                 this.registrar.addRequestPermissionsResultListener(handler);
                 handler.handle(this.permissions);
             }
