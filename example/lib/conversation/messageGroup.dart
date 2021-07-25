@@ -45,7 +45,7 @@ class MessageGroup extends StatelessWidget {
   }
 
   String _formatDatetime(SmsMessage message, BuildContext context) {
-    return MaterialLocalizations.of(context).formatFullDate(message.date);
+    return MaterialLocalizations.of(context).formatFullDate(message.date!);
   }
 
   bool _isCompactMode(int i) {
